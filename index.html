@@ -1,0 +1,1215 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>國中 2000 單字特訓王</title>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.5.1/dist/confetti.browser.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+        :root {
+            --primary: #6c5ce7;
+            --secondary: #a29bfe;
+            --success: #2ecc71;
+            --danger: #e74c3c;
+            --bg: #1a1a2e;
+            --card: #16213e;
+            --text: #e94560;
+        }
+
+        body {
+            font-family: 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+            background-color: var(--bg);
+            color: white;
+            display: flex;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .layout {
+            display: grid;
+            grid-template-columns: 1fr 320px;
+            gap: 25px;
+            max-width: 1100px;
+            width: 100%;
+        }
+
+        /* 遊戲主區 */
+        .game-panel {
+            background: var(--card);
+            border-radius: 25px;
+            padding: 40px;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.5);
+            text-align: center;
+            border: 2px solid #0f3460;
+        }
+
+        .stats {
+            display: flex;
+            justify-content: space-between;
+            font-size: 1.2rem;
+            margin-bottom: 30px;
+            color: #00d2ff;
+        }
+
+        .question-box {
+            margin: 50px 0;
+        }
+
+        .word-en {
+            font-size: 3.5rem;
+            font-weight: 800;
+            letter-spacing: 2px;
+            margin-bottom: 10px;
+            text-shadow: 0 0 15px var(--text);
+        }
+
+        .options-grid {
+            display: grid;
+            gap: 15px;
+        }
+
+        .opt-btn {
+            background: rgba(255,255,255,0.05);
+            border: 2px solid #0f3460;
+            padding: 20px;
+            font-size: 1.2rem;
+            color: white;
+            border-radius: 15px;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+
+        .opt-btn:hover {
+            background: rgba(255,255,255,0.1);
+            transform: scale(1.02);
+            border-color: var(--secondary);
+        }
+
+        .opt-btn.correct { background: var(--success) !important; border-color: #fff; }
+        .opt-btn.wrong { background: var(--danger) !important; border-color: #fff; }
+
+        /* 圖鑑區 */
+        .collection-shelf {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #0f3460;
+        }
+
+        .badge-list {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+        }
+
+        .badge {
+            font-size: 2rem;
+            filter: grayscale(1) opacity(0.3);
+            transition: 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .badge.active {
+            filter: grayscale(0) opacity(1);
+            transform: scale(1.3);
+        }
+
+        /* 側邊欄 - 錯題 */
+        .sidebar {
+            background: #0f3460;
+            border-radius: 25px;
+            padding: 20px;
+            height: fit-content;
+        }
+
+        .sidebar h3 { color: var(--text); border-bottom: 2px solid var(--text); padding-bottom: 10px; }
+
+        #error-log {
+            list-style: none;
+            padding: 0;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        .error-card {
+            background: rgba(0,0,0,0.2);
+            margin-bottom: 10px;
+            padding: 10px;
+            border-radius: 10px;
+            font-size: 0.9rem;
+            animation: slideIn 0.3s ease;
+        }
+
+        .export-btn {
+            width: 100%;
+            padding: 12px;
+            background: var(--text);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-top: 15px;
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        @media (max-width: 800px) {
+            .layout { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="layout">
+    <div class="game-panel">
+        <div class="stats">
+            <div>🔥 分數: <span id="score">0</span></div>
+            <div>📚 已答題: <span id="count">0</span></div>
+        </div>
+
+        <div class="question-box">
+            <div class="word-en" id="q-en">Loading...</div>
+            <p style="color: #aaa;">請選擇正確的中文意思：</p>
+        </div>
+
+        <div class="options-grid" id="options">
+            </div>
+
+        <div class="collection-shelf">
+            <p>🏆 榮譽圖鑑</p>
+            <div class="badge-list">
+                <span class="badge" title="小試身手">🥚</span>
+                <span class="badge" title="初露鋒芒">🐣</span>
+                <span class="badge" title="百戰百勝">🐥</span>
+                <span class="badge" title="單字戰神">🦅</span>
+                <span class="badge" title="傳說級別">🐉</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="sidebar">
+        <h3>錯題紀錄集</h3>
+        <ul id="error-log">
+            <li style="color: #666; font-size: 0.8rem;">目前無錯題，保持下去！</li>
+        </ul>
+        <button class="export-btn" onclick="exportErrors()">下載錯題 Excel</button>
+    </div>
+</div>
+
+<script>
+    // 這裡放入你剛才提供的 2000 單字資料片段 (模擬讀取 CSV)
+    // 實際上我們直接解析你提供的文本格式
+    const rawData = `一些,a few
+一些,a little
+許多,a lot
+能夠-的,able
+關於,about
+在--上面,above
+害怕的,afraid
+在--以後,after
+下午, afternoon
+再-又,again
+年齡, age
+以前, ago
+同意,agree
+空氣,airport
+飛機, airplane (plane)
+機場,airport
+全部的,all
+幾乎, almost
+沿著, along
+已經, already
+也,also
+總是,always
+上午, a.m.
+美國,America
+美國人(的),American
+和,and
+生氣的,angry
+動物,animal
+另一個,another
+回答,answer
+任何,any
+任何人,anyone
+任何事,anything
+公寓,apartment
+出現,appear
+蘋果,apple
+四月,April
+手臂,arm
+在--附近,around
+到達,arrive
+藝術,art
+當--時,as
+問,ask
+在,at
+八月,August
+姑媽,aunt
+秋天,autumn
+遠離,away
+嬰兒,baby
+背部,back
+壞的,bad
+袋子,bag
+烘烤,bake
+麵包店,bakery
+球,ball
+香蕉,banana
+樂團,band
+銀行,bank
+籃球,basketball
+洗澡,bath
+浴室,bathroom
+是(am/is/are),be
+海灘,beach
+豆子,bean
+熊,bear
+美麗的,beautiful
+因為,because
+變為,become
+床,bed
+臥房,bedroom
+牛肉,beef
+在--以前,before
+開始,begin
+在--後面,behind
+相信,believe
+鈴,bell
+屬於,belong
+在--下面,below
+旁邊,beside
+在--之間,between
+腳踏車,bicycle
+大的,big
+鳥,bird
+生日,birthday
+咬,bite
+黑色的,black
+黑板,blackboard
+盲的,blind
+重擊,blow
+藍色的,blue
+船,boat
+身體,body
+書,book
+書店,bookstore
+無聊的,bored
+令人厭煩的,boring
+出生,born
+借,borrow
+兩者,both
+瓶子,bottle
+底部,bottom
+碗,bowl
+盒子,box
+男孩,boy
+麵包,bread
+打破,break
+早餐,breakfast
+橋,bridge
+明亮的,bright
+帶來,bring
+兄弟,brother
+咖啡色,brown
+刷,brush
+建立,build
+公共汽車,bus
+忙碌的,busy
+但是,but
+奶油,butter
+買,buy
+由--旁邊,by
+籠子,cage
+蛋糕,cake
+打電話,call
+相機,camera
+營隊,camp
+能,can
+糖果,candy
+帽子,cap
+車子,car
+卡片,card
+照顧,care
+細心的,careful
+手提行李,carry
+箱子,case
+貓,cat
+捉住,catch
+慶祝,celebrate
+手機,cell phone
+中心,center
+公分,centimeter
+椅子,chair
+粉筆,chalk
+改變,change
+便宜的,cheap
+檢查,check
+起司,cheese
+雞肉,chicken
+兒童,child
+中文,Chinese
+巧克力,chocolate
+選擇,choose
+筷子,chopsticks
+聖誕節,Christmas
+教堂,church
+圓圈,circle
+城市,city
+班級,class
+同班同學,classmate
+乾淨的,clean
+清楚的,clear
+職員,clerk
+聰明的,clever
+爬,climb
+時鐘,clock
+關閉,close
+衣服,clothes
+雲,cloud
+冷,cold
+收集,collect
+顏色,color
+來,come
+舒服的,comfortable
+漫畫,comic
+共同的,common
+電腦,computer
+便利商店,convenient store
+廚師,cook
+餅乾,cookie
+涼爽的,cool
+副本,copy
+角落,corner
+花費,cost
+棉花,cotton
+沙發,couch
+數,count
+國家,country
+堂兄弟,cousin
+覆蓋,cover
+牛,cow
+瘋狂的,crazy
+乳酪,cream
+創造,create
+跨越,cross
+哭,cry
+杯子,cup
+可愛的,cute
+切,cut
+舞,dance
+危險的,dangerous
+黑暗的,dark
+日期,date
+女兒,daughter
+天,day
+死的,dead
+親愛的,dear
+十二月,December
+決定,decide
+美味的,delicious
+牙醫,dentist
+部門,department
+百貨公司,department store
+桌子,desk
+字典,dictionary
+死,die
+不同的,different
+困難的,difficult
+挖掘,dig
+晚餐,dinner
+骯髒的,dirty
+發現,discover
+碟子,dish
+做,do
+醫生,doctor
+狗,dog
+玩偶,doll
+美元,dollar
+門,door
+圓點,dot
+向下,down
+打盹,doze
+畫,draw
+夢,dream
+洋裝,dress
+喝,drink
+開車,drive
+駕駛,driver
+掉落,drop
+乾的,dry
+鴨子,duck
+在--期間,during
+各個,each
+耳朵,ear
+早的,early
+地球,earth
+東方,east
+容易的,easy
+吃,eat
+邊緣,edge
+蛋,egg
+八,eight
+十八,eighteen
+第八十,eighty
+或者是,either
+小學,elementary school
+大象,elephant
+十一,eleven
+其他的,else
+電子郵件,e-mail
+空的,empty
+結尾,end
+工程師,engineer
+英國,England
+享受,enjoy
+足夠的,enough
+進入,enter
+信封,envelope
+環境,environment
+橡皮擦,eraser
+前夕,eve
+甚至,even
+傍晚,evening
+每一,every
+每個人,everyone
+每件事,everything
+例子,example
+優秀的,excellent
+除了,except
+興奮的,excited
+令人興奮的,exciting
+運動,exercise
+昂貴的,expensive
+經驗,experience
+眼睛,eye
+臉,face
+事實,fact
+工廠,factory
+掉落,fall
+家庭,family
+著名的,famous
+扇子,fan
+遠的,far
+農場,farm
+農夫,farmer
+快的,fast
+胖的,fat
+父親,father
+最喜歡的,favorite
+二月,February
+感覺,feel
+節慶,festival
+少數,few
+十五,fifteen
+五十,fifty
+戰鬥,fight
+填滿,fill
+最後,finally
+發現,find
+細的,fine
+手指,finger
+完成,finish
+火,fire
+第一,first
+魚,fish
+漁夫,fisher
+五,five
+修理,fix
+旗子,flag
+地板,floor
+花,flower
+飛,fly
+追隨,follow
+食物,food
+腳,foot
+為了,for
+外國的,foreign
+外國人,foreigner
+忘記,forget
+叉子,fork
+四十,forty
+四,four
+十四,fourteen
+自由的,free
+新鮮的,fresh
+星期五,Friday
+朋友,friend
+友善的,friendly
+害怕,frighten
+從,from
+前面,front
+水果,fruit
+滿的,full
+有趣的,fun
+有趣的,funny
+未來,future
+遊戲,game
+垃圾,garbage
+花園,garden
+氣體,gas
+門,gate
+一般,general
+慷慨的,generous
+得到,get
+禮物,gift
+女孩,girl
+給,give
+高興的,glad
+玻璃,glass
+手套,glove
+去,go
+山羊,goat
+神,god
+金子,gold
+好,good
+再見,good-bye
+鵝,goose
+政府,government
+成績,grade
+公克,gram
+祖父母,grandparents
+葡萄,grape
+草,grass
+偉大的,great
+綠色的,green
+地面,ground
+團體,group
+生長,grow
+番石榴,guava
+吉他,guitar
+體育館,gym
+習慣,habit
+頭髮,hair
+一半,half
+火腿,ham
+漢堡,hamburger
+手,hand
+英俊的,handsome
+懸掛,hang
+發生,happen
+快樂的,happy
+困難的,hard
+硬體,hardware
+帽子,hat
+討厭,hate
+有,have
+他,he
+頭,head
+頭痛,headache
+健康,health
+健康的,healthy
+聽見,hear
+心,heart
+熱,heat
+重的,heavy
+你好,hello
+幫助,help
+這裡,here
+英雄,hero
+隱藏,hide
+高的,high
+遠足,hike
+山,hill
+河馬,hippo
+歷史,history
+打,hit
+嗜好,hobby
+握住,hold
+假日,holiday
+家,home
+作業,homework
+誠實的,honest
+蜂蜜,honey
+希望,hope
+馬,horse
+醫院,hospital
+熱的,hot
+旅館,hotel
+小時,hour
+房子,house
+家事,housework
+如何,how
+然而,however
+擁抱,hug
+一百,hundred
+飢餓的,hungry
+打獵,hunt
+趕快,hurry
+受傷,hurt
+丈夫,husband
+我,I
+冰,ice
+冰淇淋,ice cream
+點子,idea
+如果,if
+忽視,ignore
+生病的,ill
+想像,imagine
+重要的,important
+在--裡面,in
+英吋,inch
+激勵,inspire
+感興趣的,interested
+有趣的,interesting
+網路,Internet
+訪問,interview
+進入,into
+發明,invent
+島嶼,island
+它,it
+夾克,jacket
+一月,January
+牛仔褲,jeans
+慢跑,jog
+加入,join
+笑話,joke
+果汁,juice
+七月,July
+跳,jump
+六月,June
+正義,just
+國王,king
+親吻,kiss
+廚房,kitchen
+風箏,kite
+膝蓋,knee
+刀子,knife
+敲,knock
+知道,know
+知識,knowledge
+湖,lake
+燈,lamp
+土地,land
+語言,language
+大的,large
+最後的,last
+遲的,late
+笑,laugh
+法律,law
+律師,lawyer
+懶惰的,lazy
+領導,lead
+領導者,leader
+學習,learn
+至少,least
+離開,leave
+左邊,left
+腿,leg
+檸檬,lemon
+借出,lend
+長度,length
+更少的,less
+課,lesson
+讓,let
+信,letter
+圖書館,library
+舔,lick
+蓋子,lid
+謊言,lie
+生命,life
+舉起,lift
+燈光,light
+喜歡,like
+線,line
+獅子,lion
+嘴唇,lip
+清單,list
+聽,listen
+小的,little
+居住,live
+客廳,living room
+孤獨的,lonely
+長的,long
+看,look
+失去,lose
+大聲的,loud
+愛,love
+可愛的,lovely
+低的,low
+幸運的,lucky
+午餐,lunch
+瘋狂的,mad
+雜誌,magazine
+郵件,mail
+郵差,mailman (mail carrier)
+主要的,main
+製作,make
+男人,man
+許多,many
+地圖,map
+三月,March
+標記,mark
+市場,market
+結婚,married
+面具,mask
+主人,master
+數學,math
+事情,matter
+五月,May
+或許,maybe
+餐,meal
+意思,mean
+肉,meat
+媒體,medium
+遇見,meet
+成員,member
+記憶,memory
+選單,menu
+雜亂,mess
+金屬,metal
+公尺,meter
+方法,method
+微波爐,microwave
+中間,middle
+午夜,midnight
+可能,might
+牛奶,milk
+百萬,million
+心靈,mind
+我的,mine
+分鐘,minute
+鏡子,miss
+想念,miss
+錯誤,mistake
+現代的,modern
+星期一,Monday
+錢,money
+猴子,monkey
+月,month
+月亮,moon
+更多,more
+早晨,morning
+大部分,most
+母親,mother
+機車,motorcycle
+山,mountain
+老鼠,mouse
+嘴巴,mouth
+移動,move
+電影,movie
+先生,Mr.
+太太,Mrs.
+小姐,Ms.
+許多,much
+泥土,mud
+博物館,museum
+音樂,music
+必須,must
+名字,name
+國籍,national
+自然,nature
+附近的,near
+脖子,neck
+需要,need
+鄰居,neighbor
+從不,never
+新的,new
+新聞,news
+下一個,next
+漂亮的,nice
+夜,night
+九,nine
+十九,nineteen
+九十,ninety
+沒有人,nobody
+點頭,nod
+噪音,noise
+吵雜的,noisy
+不,none
+麵條,noodle
+中午,noon
+北方,north
+鼻子,nose
+不,not
+筆記,note
+筆記本,notebook
+沒有任何東西,nothing
+十一月,November
+現在,now
+號碼,number
+護士,nurse
+海洋,ocean
+點鐘,o'clock
+十月,October
+之,of
+掉落,off
+辦公室,office
+軍官,officer
+時常,often
+油,oil
+老,old
+在--上面,on
+一次,once
+一,one
+洋蔥,onion
+只有,only
+開啟,open
+操作,operate
+或者是,or
+柳橙,orange
+命令,order
+其他的,other
+我們的,ours
+在--外面,out
+在--上方,over
+擁有的,own
+牛,ox
+包裹,pack
+內容,package
+頁,page
+油漆,paint
+畫家,painter
+一雙,pair
+褲子,pants
+木瓜,papaya
+紙,paper
+父母,parents
+公園,park
+部分,part
+宴會,party
+通過,pass
+過去的,past
+黏貼,paste
+路,path
+病患,patient
+付錢,pay
+和平,peace
+梨子,pear
+筆,pen
+鉛筆,pencil
+人,people
+或許,perhaps
+個人,person
+寵物,pet
+相機,photo (photograph)
+鋼琴,piano
+挑選,pick
+野餐,picnic
+圖片,picture
+派,pie
+塊,piece
+豬,pig
+粉紅色的,pink
+管子,pipe
+披薩,pizza
+地方,place
+計畫,plan
+行星,planet
+植物,plant
+盤子,plate
+玩,play
+操場,playground
+愉快的,pleasant
+請,please
+點,point
+警察,police
+警官,police officer
+池塘,pond
+池子,pool
+窮的,poor
+流行的,popular
+豬肉,pork
+郵局,post office
+明信片,postcard
+鍋子,pot
+馬鈴薯,potato
+磅,pound
+練習,practice
+準備,prepare
+禮物,present
+漂亮的,pretty
+價格,price
+王子,prince
+公主,princess
+監獄,prison
+隱私,private
+獎品,prize
+可能,probably
+問題,problem
+產品,produce
+節目,program
+驕傲的,proud
+大眾的,public
+拉,pull
+南瓜,pumpkin
+紫色,purple
+推,push
+放,put
+皇后,queen
+問題,question
+快,quick
+安靜的,quiet
+相當,quite
+兔子,rabbit
+收音機,radio
+鐵路,railway
+下雨,rain
+彩虹,rainbow
+雨衣,raincoat
+下雨的,rainy
+升起,raise
+鼠,rat
+讀,read
+準備好的,ready
+真實的,real
+真正地,really
+原因,reason
+接收,receive
+錄影,record
+紅色的,red
+冰箱,refrigerator (fridge)
+想起,remember
+重覆,repeat
+回覆,reply
+報告,report
+餐廳,restaurant
+休息,rest
+廁所,restroom
+回程,return
+稻米,rice
+富有的,rich
+騎,ride
+右邊,right
+戒指,ring
+河流,river
+路,road
+烤,roast
+機器人,robot
+岩石,rock
+角色,role
+滾動,roll
+屋頂,roof
+房間,room
+繩子,rope
+玫瑰,rose
+圓的,round
+列,row
+規則,rule
+跑,run
+難過的,sad
+安全的,safe
+沙拉,salad
+特價,sale
+鹽,salt
+相同的,same
+三明治,sandwich
+週六,Saturday
+醬汁,sauce
+存,save
+說,say
+害怕的,scared
+學校,school
+科學,science
+科學家,scientist
+滑板車,scooter
+分數,score
+螢幕,screen
+海,sea
+季節,season
+座位,seat
+第二,second
+秘密,secret
+看見,see
+種子,seed
+似乎,seem
+看見,seesaw
+很少,seldom
+賣,sell
+寄,send
+句子,sentence
+九月,September
+嚴重的,serious
+服務,serve
+七,seven
+十七,seventeen
+七十,seventy
+幾個,several
+搖動,shake
+將要,shall
+形狀,shape
+分享,share
+鯊魚,shark
+尖銳的,sharp
+一張紙--床單,sheet
+架子,shelf
+照耀,shine
+射擊,shoot
+海岸,shore
+短褲,shorts
+大叫,shout
+陣雨,shower
+蝦子,shrimp
+關閉,shut
+視覺 景色,sight
+符號,sign
+沉默,silence
+沉默的,silent
+愚笨的,silly
+銀,silver
+相似的,similar
+真誠的,sincere
+單一的 單身,single
+沉沒,sink
+第十六,sixteenth
+打雷,thunder
+整潔的,tidy
+綁,tie
+直到,till
+微小的,tiny
+小費 提示,tip
+標題,title
+吐司,toast
+腳趾,toe
+豆腐,tofu
+廁所,toilet
+舌頭,tongue
+工具,tool
+牙痛,toothache
+牙刷,toothbrush
+頂部,top
+主題,topic
+全部,total
+朝向,toward
+塔,tower
+痕跡、追蹤,trace
+貿易,trade`;
+
+    let wordBank = [];
+    let score = 0;
+    let totalCount = 0;
+    let errorWords = [];
+    let currentWord = null;
+
+    // --- 初始化解析資料 ---
+    function initData() {
+        const lines = rawData.split('\n');
+        lines.forEach(line => {
+            const parts = line.split(',');
+            if (parts.length >= 2 && parts[1].trim() !== "") {
+                wordBank.push({
+                    ch: parts[0].trim(),
+                    en: parts[1].trim()
+                });
+            }
+        });
+        nextQuestion();
+    }
+
+    // --- 遊戲邏輯 ---
+    function nextQuestion() {
+        if (wordBank.length < 3) return;
+
+        // 隨機選題
+        const correctIdx = Math.floor(Math.random() * wordBank.length);
+        currentWord = wordBank[correctIdx];
+
+        // 隨機選干擾項 (從題庫選另外兩個不同的中文意思)
+        let distractors = [];
+        while(distractors.length < 2) {
+            let rand = wordBank[Math.floor(Math.random() * wordBank.length)];
+            if (rand.en !== currentWord.en && !distractors.find(d => d.ch === rand.ch)) {
+                distractors.push(rand);
+            }
+        }
+
+        // 混亂選項
+        const options = [...distractors, currentWord].sort(() => Math.random() - 0.5);
+
+        // 渲染 UI
+        document.getElementById('q-en').innerText = currentWord.en;
+        const optContainer = document.getElementById('options');
+        optContainer.innerHTML = '';
+
+        options.forEach(opt => {
+            const btn = document.createElement('button');
+            btn.className = 'opt-btn';
+            btn.innerText = opt.ch;
+            btn.onclick = () => handleAnswer(btn, opt.en);
+            optContainer.appendChild(btn);
+        });
+    }
+
+    function handleAnswer(selectedBtn, selectedEn) {
+        const btns = document.querySelectorAll('.opt-btn');
+        btns.forEach(b => b.style.pointerEvents = 'none'); // 鎖定點擊
+
+        totalCount++;
+        document.getElementById('count').innerText = totalCount;
+
+        if (selectedEn === currentWord.en) {
+            // 答對了
+            selectedBtn.classList.add('correct');
+            score += 10;
+            document.getElementById('score').innerText = score;
+            playSuccessEffects();
+        } else {
+            // 答錯了
+            selectedBtn.classList.add('wrong');
+            // 找出正確的那個按鈕標示出來
+            btns.forEach(b => {
+                if(wordBank.find(w => w.en === currentWord.en && w.ch === b.innerText)) {
+                    b.classList.add('correct');
+                }
+            });
+            logError(currentWord);
+        }
+
+        updateBadges();
+        setTimeout(nextQuestion, 1200);
+    }
+
+    // --- 視覺與圖鑑 ---
+    function playSuccessEffects() {
+        confetti({
+            particleCount: 150,
+            spread: 70,
+            origin: { y: 0.6 },
+            colors: ['#00d2ff', '#3a7bd5', '#ffffff']
+        });
+    }
+
+    function updateBadges() {
+        const badges = document.querySelectorAll('.badge');
+        if (score >= 20) badges[0].classList.add('active');
+        if (score >= 100) badges[1].classList.add('active');
+        if (score >= 300) badges[2].classList.add('active');
+        if (score >= 600) badges[3].classList.add('active');
+        if (score >= 1000) badges[4].classList.add('active');
+    }
+
+    // --- 錯題管理 ---
+    function logError(word) {
+        if (!errorWords.find(w => w.en === word.en)) {
+            errorWords.push(word);
+            const list = document.getElementById('error-log');
+            if (errorWords.length === 1) list.innerHTML = ''; // 清除提示文字
+            
+            const li = document.createElement('li');
+            li.className = 'error-card';
+            li.innerHTML = `❌ <b>${word.en}</b><br><small>正確解答：${word.ch}</small>`;
+            list.prepend(li);
+        }
+    }
+
+    function exportErrors() {
+        if (errorWords.length === 0) {
+            alert('目前沒有錯題紀錄！');
+            return;
+        }
+        const ws = XLSX.utils.json_to_sheet(errorWords);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "錯題清單");
+        XLSX.writeFile(wb, "國中單字重難點複習.xlsx");
+    }
+
+    // 啟動
+    initData();
+</script>
+
+</body>
+</html>
